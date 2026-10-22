@@ -8,8 +8,13 @@ const storageKey = "courtside-tracker-v1";
 let saved = loadSaved(), allGames = [], filter = "all", selectedTeam = "all", dateOffset = 0, selectedGame = null;
 function loadSaved(){try{return JSON.parse(localStorage.getItem(storageKey))||{games:{}}}catch{return {games:{}}}}
 function persist(){localStorage.setItem(storageKey,JSON.stringify(saved));renderStats()}
-function teamAbbr(c){return c?.team?.abbreviation || c?.abbreviation || "TBD"}
-function teamName(c){return c?.team?.displayName || c?.displayName || TEAM_NAMES[teamAbbr(c)] || teamAbbr(c)}
+function normalizeTeamAbbr(abbr){
+ // ESPN sometimes identifies the New York Knicks as "NY" instead of "NYK".
+ // Use one canonical key so the team appears consistently in every stats view.
+ return abbr === "NY" ? "NYK" : abbr;
+}
+function teamAbbr(c){return normalizeTeamAbbr(c?.team?.abbreviation || c?.abbreviation || "TBD")}
+function teamName(c){const abbr=teamAbbr(c);return TEAM_NAMES[abbr] || c?.team?.displayName || c?.displayName || abbr}
 function scoreOf(c){return c?.score ?? ""}
 function normalizeEvent(e){
  const comp=e.competitions?.[0]||{}, competitors=comp.competitors||[];
