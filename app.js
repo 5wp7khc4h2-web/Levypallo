@@ -87,19 +87,41 @@ async function loadGameDetails(g){
  $("#dialog-content").innerHTML=`
   ${teamData}
   <label class="watch-row"><input id="watched-check" type="checkbox" ${rec.watched?"checked":""}> <span><strong>I've watched this game</strong><br><span class="notice">Only watched games count toward your stats and MVP rankings.</span></span></label>
-  <div class="pick-section"><label for="home-mvp">Most impressive ${escapeHtml(g.home.name)} player</label><select id="home-mvp"><option value="">Choose a player…</option>${players[g.home.abbr]?.map(p=>`<option value="${escapeHtml(p.name)}" ${rec.homeMvp===p.name?"selected":""}>${escapeHtml(p.name)}${p.stats?` · ${escapeHtml(p.stats)}`:""}</option>`).join("")||""}</select></div>
-  <div class="pick-section"><label for="away-mvp">Most impressive ${escapeHtml(g.away.name)} player</label><select id="away-mvp"><option value="">Choose a player…</option>${players[g.away.abbr]?.map(p=>`<option value="${escapeHtml(p.name)}" ${rec.awayMvp===p.name?"selected":""}>${escapeHtml(p.name)}${p.stats?` · ${escapeHtml(p.stats)}`:""}</option>`).join("")||""}</select></div>
-  ${(!players[g.home.abbr]?.length&&!players[g.away.abbr]?.length)?`<p class="notice">Player list isn't available from the data feed. You can still mark the game watched; try opening it again after the box score is published.</p>`:""}
+  <div class="pick-section"><label for="home-mvp">Most impressive ${escapeHtml(g.home.name)} player</label><select id="home-mvp"><option value="">Choose a player…</option>${playersForTeam(players,g.home).map(p=>`<option value="${escapeHtml(p.name)}" ${rec.homeMvp===p.name?"selected":""}>${escapeHtml(p.name)}${p.stats?` · ${escapeHtml(p.stats)}`:""}</option>`).join("")}</select></div>
+  <div class="pick-section"><label for="away-mvp">Most impressive ${escapeHtml(g.away.name)} player</label><select id="away-mvp"><option value="">Choose a player…</option>${playersForTeam(players,g.away).map(p=>`<option value="${escapeHtml(p.name)}" ${rec.awayMvp===p.name?"selected":""}>${escapeHtml(p.name)}${p.stats?` · ${escapeHtml(p.stats)}`:""}</option>`).join("")}</select></div>
+  ${(!playersForTeam(players,g.home).length&&!playersForTeam(players,g.away).length)?`<p class="notice">Player list isn't available from the data feed. You can still mark the game watched; try opening it again after the box score is published.</p>`:""}
   <div class="pick-section"><label for="game-note">Personal note (optional)</label><textarea id="game-note" rows="2" placeholder="What stood out?">${escapeHtml(rec.note||"")}</textarea></div>
   <button id="save-game" class="save-button">Save my game</button>
   <p class="notice">MVP picks are optional, but are only counted once this game is marked watched.</p>`;
  $("#save-game").addEventListener("click",saveGame);
 }
+function playersForTeam(players, team){
+ // ESPN has returned the Knicks as NY, NYK, or a city/display-name key.
+ // Search all known aliases instead of relying on one exact object key.
+ const abbr=normalizeTeamAbbr(team?.abbr||team?.abbreviation||"");
+ const name=String(team?.name||team?.displayName||"").toLowerCase().replace(/[^a-z]/g,"");
+ const aliases=[abbr,team?.abbr,team?.name,team?.displayName];
+ if(abbr==="NYK"||name.includes("newyorkknicks")) aliases.push("NY","NYK","New York","New York Knicks","Knicks");
+ for(const alias of aliases){if(alias&&Array.isArray(players[alias])&&players[alias].length)return players[alias];}
+ const target=name.replace(/knicks$/,"");
+ for(const [key,list] of Object.entries(players)){
+  if(!Array.isArray(list)||!list.length)continue;
+  const normalized=String(key).toLowerCase().replace(/[^a-z]/g,"");
+  if(name&&normalized===name)return list;
+  if(target==="newyork"&&normalized.includes("newyork"))return list;
+ }
+ return [];
+}
 function extractPlayers(data){
  const out={};const teams=data?.boxscore?.players||[];
  teams.forEach(team=>{
   const abbr=normalizeTeamAbbr(team.team?.abbreviation || "");const names=team.statistics?.[0]?.athletes||[];
-  out[abbr]=names.map(a=>{const s=a.stats||[];const labels=team.statistics?.[0]?.labels||[];const get=(key)=>{const i=labels.indexOf(key);return i>=0?s[i]:""};return {name:a.athlete?.displayName||a.athlete?.shortName||a.displayName||"",stats:[get("PTS")&&`${get("PTS")} PTS`,get("REB")&&`${get("REB")} REB`,get("AST")&&`${get("AST")} AST`].filter(Boolean).join(" · ")}}).filter(p=>p.name);
+  const players=names.map(a=>{const s=a.stats||[];const labels=team.statistics?.[0]?.labels||[];const get=(key)=>{const i=labels.indexOf(key);return i>=0?s[i]:""};return {name:a.athlete?.displayName||a.athlete?.shortName||a.displayName||"",stats:[get("PTS")&&`${get("PTS")} PTS`,get("REB")&&`${get("REB")} REB`,get("AST")&&`${get("AST")} AST`].filter(Boolean).join(" · ")}}).filter(p=>p.name);
+  // Store by both abbreviation and display name: ESPN's Knicks abbreviation
+  // has varied between feeds, while the box-score display name is reliable.
+  if(abbr)out[abbr]=players;
+  const displayName=team.team?.displayName||team.team?.name;
+  if(displayName)out[displayName]=players;
  });
  return out;
 }
