@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101113">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CourtSide">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
+  <title>CourtSide — My NBA Season</title>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">MY NBA SEASON · 2026–27</p>
+        <h1>CourtSide<span>.</span></h1>
+        <p class="subhead">Your season. Your call.</p>
+      </div>
+      <div class="ball" aria-hidden="true">🏀</div>
+    </header>
+    <nav class="tabs" aria-label="Main navigation">
+      <button class="tab active" data-tab="games">Games</button>
+      <button class="tab" data-tab="stats">My stats</button>
+      <button class="tab" data-tab="mvps">My MVPs</button>
+    </nav>
+    <main>
+      <section id="games-view" class="view active">
+        <div class="section-heading">
+          <div><p class="eyebrow">FOLLOW THE SEASON</p><h2>Schedule</h2></div>
+          <button id="refresh-btn" class="icon-button" title="Refresh schedule" aria-label="Refresh schedule">↻</button>
+        </div>
+        <div class="filters">
+          <button class="filter active" data-filter="all">All games</button>
+          <button class="filter" data-filter="upcoming">Upcoming</button>
+          <button class="filter" data-filter="final">Final</button>
+          <button class="filter" data-filter="watched">Watched</button>
+        </div>
+        <label class="search-label" for="team-filter">Filter by team</label>
+        <select id="team-filter"><option value="all">All 30 teams</option></select>
+        <div id="status" class="status" role="status">Loading NBA schedule…</div>
+        <div id="games-list" class="games-list"></div>
+        <button id="load-more" class="secondary-button hidden">Load more dates</button>
+        <p class="footnote">Scores and player statistics are fetched from ESPN's public scoreboard endpoints. Availability and response formats may change. Your personal tracking is saved on this device.</p>
+      </section>
+      <section id="stats-view" class="view">
+        <p class="eyebrow">YOUR VIEWING HABITS</p><h2>Season stats</h2>
+        <div class="metric-grid">
+          <div class="metric"><span id="watched-count">0</span><small>Games watched</small></div>
+          <div class="metric"><span id="teams-count">0</span><small>Teams seen</small></div>
+          <div class="metric"><span id="votes-count">0</span><small>MVP picks</small></div>
+        </div>
+        <div class="panel"><h3>Most-watched teams</h3><div id="team-leaderboard" class="leaderboard empty">Mark games as watched to build your leaderboard.</div></div>
+        <div class="panel"><h3>Teams you've seen</h3><div id="team-breakdown" class="team-breakdown"></div></div>
+      </section>
+      <section id="mvps-view" class="view">
+        <p class="eyebrow">YOUR EYE TEST</p><h2>My MVPs</h2>
+        <p class="muted">Your personal picks from games you watched, ranked by how often you chose each player.</p>
+        <div class="panel"><h3>Player leaderboard</h3><div id="mvp-leaderboard" class="leaderboard empty">Choose a player MVP for each team in a watched game.</div></div>
+        <div class="panel"><h3>Recent picks</h3><div id="recent-picks" class="leaderboard empty">Your saved picks will appear here.</div></div>
+      </section>
+    </main>
+    <footer><span>COURTSIDE</span><span>2026–27 SEASON</span></footer>
+  </div>
+  <dialog id="game-dialog">
+    <div class="dialog-header"><div><p class="eyebrow" id="dialog-date"></p><h2 id="dialog-title">Game details</h2></div><button id="close-dialog" class="icon-button" aria-label="Close">×</button></div>
+    <div id="dialog-score" class="dialog-score"></div>
+    <div id="dialog-content"></div>
+  </dialog>
+  <script src="./app.js"></script>
+</body>
+</html>
