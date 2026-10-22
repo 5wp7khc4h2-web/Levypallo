@@ -98,7 +98,7 @@ async function loadGameDetails(g){
 function extractPlayers(data){
  const out={};const teams=data?.boxscore?.players||[];
  teams.forEach(team=>{
-  const abbr=team.team?.abbreviation;const names=team.statistics?.[0]?.athletes||[];
+  const abbr=normalizeTeamAbbr(team.team?.abbreviation || "");const names=team.statistics?.[0]?.athletes||[];
   out[abbr]=names.map(a=>{const s=a.stats||[];const labels=team.statistics?.[0]?.labels||[];const get=(key)=>{const i=labels.indexOf(key);return i>=0?s[i]:""};return {name:a.athlete?.displayName||a.athlete?.shortName||a.displayName||"",stats:[get("PTS")&&`${get("PTS")} PTS`,get("REB")&&`${get("REB")} REB`,get("AST")&&`${get("AST")} AST`].filter(Boolean).join(" · ")}}).filter(p=>p.name);
  });
  return out;
