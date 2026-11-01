@@ -8,13 +8,16 @@ const storageKey = "courtside-tracker-v1";
 let saved = loadSaved(), allGames = [], filter = "all", selectedTeam = "all", dateOffset = 0, selectedGame = null;
 function loadSaved(){try{return JSON.parse(localStorage.getItem(storageKey))||{games:{}}}catch{return {games:{}}}}
 function persist(){localStorage.setItem(storageKey,JSON.stringify(saved));renderStats()}
-function normalizeTeamAbbr(abbr){
- // ESPN sometimes identifies the New York Knicks as "NY" instead of "NYK".
- // Use one canonical key so the team appears consistently in every stats view.
- return abbr === "NY" ? "NYK" : abbr;
+function normalizeTeamAbbr(abbr, displayName=""){
+ // ESPN feeds can use alternate city/team abbreviations. Keep one canonical key.
+ const raw=String(abbr||"").trim().toUpperCase();
+ const name=String(displayName||"").toLowerCase();
+ if(raw==="NY" || name.includes("new york knicks"))return "NYK";
+ if(["UTAH","UTH"].includes(raw) || name.includes("utah jazz"))return "UTA";
+ return raw || "TBD";
 }
-function teamAbbr(c){return normalizeTeamAbbr(c?.team?.abbreviation || c?.abbreviation || "TBD")}
-function teamName(c){const abbr=teamAbbr(c);return TEAM_NAMES[abbr] || c?.team?.displayName || c?.displayName || abbr}
+function teamAbbr(c){return normalizeTeamAbbr(c?.team?.abbreviation || c?.abbreviation || "TBD",c?.team?.displayName || c?.team?.name || c?.displayName || c?.name || "")}
+function teamName(c){const abbr=teamAbbr(c);return TEAM_NAMES[abbr] || c?.team?.displayName || c?.team?.name || c?.displayName || c?.name || abbr}
 function scoreOf(c){return c?.score ?? ""}
 function normalizeEvent(e){
  const comp=e.competitions?.[0]||{}, competitors=comp.competitors||[];
@@ -137,22 +140,43 @@ function extractBoxTeams(data,g){
 }
 function saveGame(){
  if(!selectedGame)return;const id=selectedGame.id,watched=$("#watched-check").checked,homeMvp=$("#home-mvp").value,awayMvp=$("#away-mvp").value,note=$("#game-note").value.trim();
- saved.games[id]={watched,homeMvp:watched?homeMvp:"",awayMvp:watched?awayMvp:"",note};
+ saved.games[id]={...getRecord(id),watched,homeMvp:watched?homeMvp:"",awayMvp:watched?awayMvp:"",note,teams:[{abbr:selectedGame.home.abbr,name:selectedGame.home.name},{abbr:selectedGame.away.abbr,name:selectedGame.away.name}]};
  persist();$("#game-dialog").close();renderGames();
 }
 function watchedGames(){return Object.entries(saved.games).filter(([id,r])=>r.watched)}
+let teamHydrationRunning=false;
+async function hydrateSavedTeams(){
+ if(teamHydrationRunning)return;teamHydrationRunning=true;
+ try{
+  const missing=watchedGames().filter(([id,r])=>!Array.isArray(r.teams)||r.teams.length<2);
+  for(let i=0;i<missing.length;i+=4){
+   await Promise.all(missing.slice(i,i+4).map(async([id,r])=>{
+    try{
+     const response=await fetch(`${API}/summary?event=${encodeURIComponent(id)}`);
+     if(!response.ok)return;
+     const data=await response.json();
+     const competitors=data?.header?.competitions?.[0]?.competitors||data?.boxscore?.players?.map(x=>x.team)||[];
+     const teams=competitors.map(c=>({abbr:teamAbbr(c),name:teamName(c)})).filter(t=>t.abbr!=="TBD");
+     if(teams.length>=2)r.teams=teams.slice(0,2);
+    }catch(error){console.warn("Could not restore team details for saved game",id,error)}
+   }));
+  }
+  if(missing.some(([id])=>saved.games[id]?.teams?.length>=2)){localStorage.setItem(storageKey,JSON.stringify(saved));renderStats()}
+ }finally{teamHydrationRunning=false}
+}
 function renderStats(){
  const watched=watchedGames();$("#watched-count").textContent=watched.length;
- const teamCounts={};const mvpCounts={};let voteCount=0;const pickRows=[];
+ const teamCounts={};const teamLabels={};const mvpCounts={};let voteCount=0;const pickRows=[];
  watched.forEach(([id,r])=>{
   const g=allGames.find(x=>x.id===id);
-  if(g){teamCounts[g.home.abbr]=(teamCounts[g.home.abbr]||0)+1;teamCounts[g.away.abbr]=(teamCounts[g.away.abbr]||0)+1}
-  [[r.homeMvp,g?.home?.name,g?.home?.abbr],[r.awayMvp,g?.away?.name,g?.away?.abbr]].forEach(([player,team,abbr])=>{if(player){voteCount++;mvpCounts[player]=(mvpCounts[player]||0)+1;pickRows.push({player,team:team||abbr||"Team",date:g?.shortDate||"Saved game",id})}});
+  const teams=r.teams?.length?r.teams:(g?[g.home,g.away]:[]);
+  teams.forEach(t=>{const abbr=normalizeTeamAbbr(t.abbr||t.abbreviation||"",t.name||t.displayName||"");if(abbr&&abbr!=="TBD"){teamCounts[abbr]=(teamCounts[abbr]||0)+1;teamLabels[abbr]=TEAM_NAMES[abbr]||t.name||t.displayName||abbr}});
+  [[r.homeMvp,g?.home?.name||r.teams?.[0]?.name,g?.home?.abbr||r.teams?.[0]?.abbr],[r.awayMvp,g?.away?.name||r.teams?.[1]?.name,g?.away?.abbr||r.teams?.[1]?.abbr]].forEach(([player,team,abbr])=>{if(player){voteCount++;mvpCounts[player]=(mvpCounts[player]||0)+1;pickRows.push({player,team:team||abbr||"Team",date:g?.shortDate||"Saved game",id})}});
  });
  $("#teams-count").textContent=Object.keys(teamCounts).length;$("#votes-count").textContent=voteCount;
  const teamSorted=Object.entries(teamCounts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
  $("#team-leaderboard").innerHTML=teamSorted.length?teamSorted.slice(0,10).map(([abbr,count],i)=>`<div class="leader-row"><div class="rank">${String(i+1).padStart(2,"0")}</div><div><div class="leader-name">${escapeHtml(TEAM_NAMES[abbr]||abbr)}</div><div class="bar-track"><div class="bar-fill" style="width:${count/Math.max(...teamSorted.map(x=>x[1]))*100}%"></div></div></div><div class="leader-value">${count} ${count===1?"game":"games"}</div></div>`).join(""):`<div class="empty">No watched games yet.</div>`;
- $("#team-breakdown").innerHTML=teamSorted.length?Object.entries(TEAM_NAMES).sort((a,b)=>(teamCounts[b[0]]||0)-(teamCounts[a[0]]||0)||a[1].localeCompare(b[1])).filter(([a])=>teamCounts[a]).map(([a,n])=>`<div class="team-stat"><strong>${escapeHtml(a)} · ${teamCounts[a]||0}</strong><span>${escapeHtml(n)}</span></div>`).join(""):`<div class="empty">Your team totals will appear here.</div>`;
+ $("#team-breakdown").innerHTML=teamSorted.length?teamSorted.map(([abbr,count])=>`<div class="team-stat"><strong>${escapeHtml(abbr)} · ${count}</strong><span>${escapeHtml(teamLabels[abbr]||TEAM_NAMES[abbr]||abbr)}</span></div>`).join(""):`<div class="empty">Your team totals will appear here.</div>`;
  const mvps=Object.entries(mvpCounts).sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0]));
  $("#mvp-leaderboard").innerHTML=mvps.length?mvps.map(([name,count],i)=>`<div class="leader-row"><div class="rank">${String(i+1).padStart(2,"0")}</div><div><div class="leader-name">${escapeHtml(name)}</div><div class="leader-meta">Your personal MVP pick</div><div class="bar-track"><div class="bar-fill" style="width:${count/Math.max(...mvps.map(x=>x[1]))*100}%"></div></div></div><div class="leader-value">${count} ${count===1?"pick":"picks"}</div></div>`).join(""):`<div class="empty">Choose a player MVP for each team in a watched game.</div>`;
  $("#recent-picks").innerHTML=pickRows.length?pickRows.slice(-8).reverse().map(p=>`<div class="leader-row"><div class="rank">★</div><div><div class="leader-name">${escapeHtml(p.player)}</div><div class="leader-meta">${escapeHtml(p.team)} · ${escapeHtml(p.date)}</div></div><div class="leader-value">MVP</div></div>`).join(""):`<div class="empty">Your saved picks will appear here.</div>`;
@@ -166,4 +190,4 @@ $("#close-dialog").addEventListener("click",()=>$("#game-dialog").close());
 $("#games-list").addEventListener("click",e=>{const card=e.target.closest("[data-game]");if(card){const game=allGames.find(g=>g.id===card.dataset.game);if(game)loadGameDetails(game)}});
 $("#games-list").addEventListener("keydown",e=>{if((e.key==="Enter"||e.key===" ")&&e.target.matches("[data-game]")){e.preventDefault();e.target.click()}});
 if("serviceWorker" in navigator && location.protocol.startsWith("http"))navigator.serviceWorker.register("./sw.js").catch(console.warn);
-fetchWeek();renderStats();
+fetchWeek();renderStats();hydrateSavedTeams();
